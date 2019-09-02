@@ -1,0 +1,11 @@
+__pycache__/
+.ipynb_checkpoints
+.iml
+.xml
+data/
+*.pyc
+*.fasta
+*.clstr
+*.out
+*.pkl
+tmp_data/
