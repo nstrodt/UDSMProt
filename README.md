@@ -3,13 +3,25 @@
 
 For a detailed description of technical details and experimental results, please refer to our paper:
 
-[Universal Deep Sequence Models for Protein Classification](https://www.biorxiv.org/content/10.1101/704874v1)
+[Universal Deep Sequence Models for Protein Classification](https://doi.org/10.1101/704874)
 
 Nils Strodthoff, Patrick Wagner, Markus Wenzel, and Wojciech Samek
 
 bioRxiv preprint 2019
 
+    @article{Strodthoff:2019UDSMProt,
+	author = {Strodthoff, Nils and Wagner, Patrick and Wenzel, Markus and Samek, Wojciech},
+	title = {{UDSMProt: Universal Deep Sequence Models for Protein Classification}},
+	elocation-id = {704874},
+	year = {2019},
+	doi = {10.1101/704874},
+	publisher = {Cold Spring Harbor Laboratory},
+	journal = {bioRxiv}
+	}
+
 This is the accompanying code repository, where we also provide links to [pretrained language models](https://datacloud.hhi.fraunhofer.de/nextcloud/s/9R8mWzDSYWdQdjd). 
+
+Also have a look at [**USMPep**](https://github.com/nstrodt/USMPep):[Universal Sequence Models for Major Histocompatibility Complex Binding Affinity Prediction](https://doi.org/10.1101/816546) that builds on the same framework.
 
 
 ## Dependencies
@@ -44,7 +56,7 @@ Optionally (for support of threshold 0.4 clusters) install [cd-hit](`https://git
  
 
 ### GO prediction
-* Follow the instructions and use the preprocessing scripts provided by the [DeeProtein repository](https://github.com/juzb/DeeProtein) (`download.sh`, `datasets.sh`, and `datasets_up.sh`) to create the files `train_cafa3_original.shuffled.csv`, `filtered_sp_cdhitted_05.csv.shuffled`, `test_cafa3.shuffled.csv` and `test_cafa3_deepgo_comparison.shuffled.csv` and place them in the `./data/` folder
+* Download the raw GO prediction data `data-2016.tar.gz` from [DeepGoPlus](http://deepgoplus.bio2vec.net/data/) and extract it into the `./data/deepgoplus_data_2016` folder
 
 ### Remote Homology Detection
 * Download the [superfamily](`http://www.bioinf.jku.at/software/LSTM_protein/jLSTM_protein/datasets/SCOP167-superfamily.tar.bz2`) and [fold](http://www.bioinf.jku.at/software/LSTM_protein/jLSTM_protein/datasets/SCOP167-fold.tar.bz2) datasets and extract them into the `./data` folder
@@ -81,11 +93,11 @@ python modelv1.py classification --from_scratch=False --pretrained_folder=datase
 * Finetuning for gene ontology prediction
 ```shell
 cd code
-python modelv1.py classification --from_scratch=False --pretrained_folder=datasets/lm/lm_sprot_uniref_fwd --epochs=30 --lr=0.001 --lr_fixed=True --bs=32 --lr_slice_exponent=2.0 --metrics=[] --working_folder=datasets/clas_go/clas_go_deeprotein_sp_train_deepgo_test --export_preds=True --eval_on_val_test=True
+python modelv1.py classification --from_scratch=False --pretrained_folder=datasets/lm/lm_sprot_uniref_fwd --epochs=30 --lr=0.001 --lr_fixed=True --bs=32 --lin_ftrs=[1024] --lr_slice_exponent=2.0 --metrics=[] --working_folder=datasets/clas_go/clas_go_deepgoplus_2016 --export_preds=True --eval_on_val_test=True
 ```
 * Finetuning for remote homology detection (here for superfamily level and a single dataset)
 ```shell
 cd code
-python modelv1.py classification --from_scratch=False --pretrained_folder=datasets/lm/lm_sprot_uniref_fwd --epochs=10 --bs=128 --metrics=["binary_auc","binary_auc50","accuracy"] --eval_on_val_test=True --early_stopping=binary_auc --bs=64 --lr=0.05 --fit_one_cycle=False --working_folder=datasets/clas_scop/clas_scop0 --export_preds=True --eval_on_val_test=True
+python modelv1.py classification --from_scratch=False --pretrained_folder=datasets/lm/lm_sprot_uniref_fwd --epochs=10 --bs=128 --metrics=["binary_auc","binary_auc50","accuracy"] --early_stopping=binary_auc --bs=64 --lr=0.05 --fit_one_cycle=False --working_folder=datasets/clas_scop/clas_scop0 --export_preds=True --eval_on_val_test=True
 ```
 The output is logged in `logfile.log` in the working directory, the final results are exported for convenience as `result.npy` and individual predictions that can be used for example for ensembling forward and backward models are exported as `preds_valid.npz` and `preds_valid.npz` (in case `export_preds` is set to true).

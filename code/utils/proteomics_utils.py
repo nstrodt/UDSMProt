@@ -271,7 +271,6 @@ def filter_human_proteome(df_sprot):
 def filter_aas(df, exclude_aas=["B","J","X","Z"]):
     '''excludes sequences containing exclude_aas: B = D or N, J = I or L, X = unknown, Z = E or Q'''
     return df[~df.sequence.apply(lambda x: any([e in x for e in exclude_aas]))]
-
 #######################################################################################################
 def parse_uniprot_keywords(filename):
     '''parsing uniprot keywords (keyword->description) ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/complete/docs/keywlist.txt'''
@@ -402,22 +401,54 @@ def generate_deeprotein_dataset(train_on_cafa3_original=False, eval_on_cafa3_tes
     
     return df
 
-def go_predictions_to_deepgo_pkl(preds,labels,ids,label_itos,df_itos_filename="lbl_itos.pkl",df_preds_filename="preds.pkl"):
-    '''converts predictions into deepgo format that can be processed by deeprotein/deepgo evaluation scripts
-    call: python "$CODE_DIR"/DeeProtein/scripts/deep_go_eval.py preds.pkl go-basic.obo  lbl_itos.pkl > deep_go_eval.txt
-    '''
-    #itos
-    df_itos=pd.DataFrame(label_itos)
-    df_itos.columns = ["functions"]
-    df_itos.to_pickle(df_itos_filename)
-    #preds
-    rows=[]
-    for pr,lbl,id in zip(preds,labels,ids):
-        gos = set([label_itos[i] for i in np.where(lbl==1)[0]])
-        rows.append({"gos":gos,"labels":lbl,"targets":id,"predictions":pr})
-    df_preds = pd.DataFrame(rows)
-    df_preds.to_pickle(df_preds_filename)
-    return df_itos,df_preds
+def prepare_deepgoplus_data(train_pkl,valid_pkl,test_pkl,obofile,nmin_train=50,propagate_scores=False,ont_filter=None):
+    '''prepares go prediction dataset from deepgoplus data http://deepgoplus.bio2vec.net/data/
+    xxx_pkl: path to pkl data (valid potentially None)
+    obofile: path to obo file
+    nmin_train: include only GO labels with at least nmnin_train occurrences in train + valid
+    propagate_scores: propagate GO labels upwards through hierarchy (already done for deepgoplus data)
+    ont_filter: filter on molecular_function, cellular_component, biological_process or None (i.e. all)'''
+    train_df = pd.read_pickle(train_pkl)
+    train_df["cluster_ID"]=0
+    
+    test_df = pd.read_pickle(test_pkl)
+    if(valid_pkl is not None):
+        valid_df = pd.read_pickle(valid_pkl)
+        valid_df["cluster_ID"]=1
+        test_df["cluster_ID"]=2
+        df = pd.concat([train_df,valid_df,test_df],sort=True)
+    else:
+        test_df["cluster_ID"]=1
+        df = pd.concat([train_df,test_df],sort=True)
+    
+    if(propagate_scores):#normally not required
+        print("Propagating scores... (will take a while)")
+        goterms = parse_go_terms(obofile)
+        goterms["parents"]=goterms.apply(lambda row:trace_go_parents(row.name,goterms), axis=1)
+        
+        parent_dict = {}
+        for id,row in goterms.iterrows():
+            parent_dict[row.name]=row["parents"]
+        df["annotations"]=df.annotations.apply(lambda x:list(np.unique([item for sublist in [parent_dict[go_to_int(y)] for y in x] for item in sublist])))
+        df.annotations =df.annotations_extended.apply(lambda x:[int_to_go(y) for y in x])
+    
+    print("Selecting GO Terms...")
+    def flatten_list(l): 
+        return [item for sublist in l for item in sublist]
+    go_terms = flatten_list([list(l) for l in list(df[df.cluster_ID==0 if valid_pkl is None else df.cluster_ID<=1].annotations)])
+    go_terms_unique, go_terms_counts = np.unique(go_terms,return_counts=True)
+    label_itos = go_terms_unique[np.where(go_terms_counts>=nmin_train)[0]]
+    
+    #potentially filter GO-terms
+    if(ont_filter is not None):
+        goterms = parse_go_terms(obofile)
+        label_itos = [l for l in label_itos if goterms.loc[go_to_int(l)].namespace==ont_filter]
+    print(len(label_itos),"GO terms selected.")
+    print("Preparing final dataframe...")
+    df["label"]=df.annotations.apply(lambda x: [y for y in x if y in label_itos])
+    df["sequence"]=df.sequences
+    df["ID"]=df.proteins
+    return df.set_index("ID")
 ######################################################################################################
 def explode_clusters_df(df_cluster):
     '''aux. function to convert cluster dataframe from one row per cluster to one row per ID'''
@@ -589,18 +620,28 @@ def truncate_ecs(ec_lst,level=1,drop_incomplete=True):
         tmp=[truncate_ec(y,level) for y in ec_lst]
     return list(np.unique(tmp))
 
-def ecs_from_df(df, level=1, include_NoEC=False, drop_incomplete=True, drop_ec7=True):
+def ecs_from_df(df, level=1, include_NoEC=False, drop_incomplete=True, drop_ec7=True, single_label=True, include_superclasses=False):
     '''map ecs (truncated to a certain level) to integers
     input is a ec dataframe with sequence and ecs columns (for example a uniprot dataframe or a dataframe produced by one of the methods below)
     '''
     if(not("ecs_truncated" in df.columns)):    
         df["ecs_truncated"] = df.ecs.apply(lambda x: truncate_ecs(x, level=level, drop_incomplete=drop_incomplete))
     
+    if(include_superclasses):
+        assert(level>0)
+        
+        levels_super = range(0 if include_NoEC else 1,level)
+        def flatten_list(l): 
+            return [item for sublist in l for item in sublist]
+        df["ecs_truncated_super"] = df.ecs_truncated.apply(lambda x: flatten_list([truncate_ecs(x, level=ls, drop_incomplete=drop_incomplete) for ls in levels_super]))
+    
     column_list = ["sequence","ecs_truncated"]
     if("fragment" in df.columns):
         column_list.append("fragment")
     if("proteinexistence" in df.columns):
         column_list.append("proteinexistence")
+    if("ecs_truncated_super" in df.columns):
+        column_list.append("ecs_truncated_super")
         
     df_loc=df[column_list].copy()
 
@@ -614,8 +655,27 @@ def ecs_from_df(df, level=1, include_NoEC=False, drop_incomplete=True, drop_ec7=
         df_loc.ecs_truncated = df_loc.ecs_truncated.apply(lambda x: [y for y in x if y[0]!="7"])
     
     df_loc.drop(df_loc[df_loc.ecs_truncated.apply(len) == 0].index,inplace=True) #drop potentially empty ECs from incomplete/ec7 entries
-        
+    
+    if(single_label):
+        df_loc.drop(df_loc[df_loc.ecs_truncated.apply(lambda x:len(x)!=1)].index,inplace=True)
+    
+    if(include_superclasses):
+        df_loc.ecs_truncated = df_loc.apply(lambda row: list(set(row["ecs_truncated"]+row["ecs_truncated_super"])),axis=1)
+                
     ec_itos=list(np.unique(np.concatenate(df_loc.ecs_truncated.values)))
+    if(include_superclasses):
+        def comp(x):
+            if(x=="EC"):
+                return -2
+            elif(x=="NoEC"):
+                return -1
+            else:
+                id = [int(l) for l in x.split(".")][::-1]
+                id = sum([pow(1000,i)*v for i,v in enumerate(id)])
+                return id
+        ec_itos=sorted(ec_itos,key=comp)
+        print("ec_itos",ec_itos)
+        
     ec_stoi={s:i for i,s in enumerate(ec_itos)}
 
     df_loc.ecs_truncated=df_loc.ecs_truncated.apply(lambda x: [ec_stoi[y] for y in x])

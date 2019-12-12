@@ -76,16 +76,13 @@ class sentencepiece_tokenizer:
 
 #text=["AAEFDD","DDDDDFFF","FFKKJKJUIUE","FJKJKJKEY","AAEGGFF","FFFKKK"]
 #df_text = pd.DataFrame(text, columns=['sequence'])
-#
 #spt = sentencepiece_tokenizer(pathlib.Path("./"),df_text,vocab_size=20)
-#
 #for t in text:
 #    print(spt.tokenize(t))
 
 ##########################################################################
 #prepare dataset from dataframe
 ##########################################################################
-# TODO check if saving as reduced int array is an option
 def prepare_dataset(path,df_seq,tokenizer=list_tokenizer,sequence_len_min_tokens=0, sequence_len_max_tokens=0, tok_itos_in=[],pad_idx=0, label_itos_in=[], insert_bos=True, insert_eos=False, sequence_output=False, insert_oov=False,max_entries=0,regression=False,max_vocab=60000,min_freq=2, mask_idx=None, df_seq_redundant=None):
     '''
     Creates set of numerical arrays from a dataframe for further processing.
@@ -162,7 +159,10 @@ def prepare_dataset(path,df_seq,tokenizer=list_tokenizer,sequence_len_min_tokens
             df["label_enc"]=df.label
         else:#categorical label
             if(len(label_itos_in)>0): #use the given label_itos
-                df["label_enc"]=df.label.astype('int64')
+                if(isinstance(df.label.iloc[0],list) or isinstance(df.label.iloc[0],np.ndarray)):#label is a list
+                    df["label_enc"]=df.label
+                else:#label is a single entry
+                    df["label_enc"]=df.label.astype('int64')
                 label_itos=label_itos_in
             else: #create label_itos
                 if(isinstance(df.label.iloc[0],list) or isinstance(df.label.iloc[0],np.ndarray)):#label is a list

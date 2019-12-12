@@ -26,6 +26,7 @@ kwargs_defaults = {
 "emb_sz":400, # embedding size
 "nh":1150, # number of hidden units
 "nl":3, # number of layers
+"lin_ftrs":None, #optional list of hidden layer sizes for the classification head (None == [50])
 
 "wd":1e-7, # weight decay
 "bptt":70, # backpropagation through time (sequence length fed at a time) in fastai LMs is approximated to a std. deviation around 70, by perturbing the sequence length on a per-batch basis
@@ -47,6 +48,7 @@ kwargs_defaults = {
 "from_scratch":True, # train from scratch or pretrain
 "gradual_unfreezing":True, # unfreeze layer by layer during finetuning
 
+"hierarchical":None, #list of lists separating different hierarchical losses e.g. [[0.6],[6,-1]] for EC level 1 [0:6] and level 2 [6:-1]
 
 "arch": "AWD_LSTM", # AWD_LSTM, Transformer, TransformerXL, BERT (BERT shares params nh, nl, dropout with the LSTM config)
 "nheads":6, # number of BERT/Transformer heads 
@@ -68,7 +70,9 @@ kwargs_defaults = {
 "early_stopping": "None", #performs early stopping on specified metric (possible entries: valid entries for metrics or trn_loss or val_loss)
 
 "interactive": False, # for execution in juyter environment; allows manual determination of lrs (specifying just the lr for the first finetuning step)
-"interactive_finegrained":False # for execution in juyter environment; allows manual determination of lrs (specifying lrs for all finetuning steps)
+"interactive_finegrained":False, # for execution in juyter environment; allows manual determination of lrs (specifying lrs for all finetuning steps)
+
+"return_learner": False #returns learner and exits
 }
 
 ######################################################################################################
@@ -111,7 +115,8 @@ def generic_model(clas=True, **kwargs):
 
     kwargs["clas"]=clas
     
-    write_log_header(WORKING_FOLDER,kwargs)
+    if(not(kwargs["return_learner"])):
+        write_log_header(WORKING_FOLDER,kwargs)
 
     # Load preprocessed data
     tok = np.load(WORKING_FOLDER/'tok.npy', allow_pickle=True)
@@ -156,7 +161,8 @@ def generic_model(clas=True, **kwargs):
        test_IDs = test_IDs_raw
        if(len(test_IDs)==0):
            assert(kwargs["concat_train_val"] is False), "Avoiding accidental evaluation on validation set"
-           write_log(WORKING_FOLDER,"Empty test set: setting eval_on_val_test to False")
+           if(not(kwargs["return_learner"])):
+               write_log(WORKING_FOLDER,"Empty test set: setting eval_on_val_test to False")
            kwargs["eval_on_val_test"]=False
 
     tok_itos = np.load(WORKING_FOLDER/'tok_itos.npy',allow_pickle=True)
@@ -171,8 +177,8 @@ def generic_model(clas=True, **kwargs):
                 print("tok_itos does not match- remapping...")
                 print("tok_itos_pretrained",tok_itos_pretrained)
                 print("tok_itos",tok_itos)
-                
-                write_log(WORKING_FOLDER,"Remapping tok_itos...")
+                if(not(kwargs["return_learner"])):
+                    write_log(WORKING_FOLDER,"Remapping tok_itos...")
                 tok_itos_new = np.concatenate((tok_itos_pretrained,np.setdiff1d(tok_itos,tok_itos_pretrained)),axis=0)
                 tok_stoi_new = {s:i for i,s in enumerate(tok_itos_new)}
 
@@ -190,7 +196,9 @@ def generic_model(clas=True, **kwargs):
     if (clas and not(kwargs["regression"])):
         label_itos = np.load(WORKING_FOLDER/'label_itos.npy',allow_pickle=True)
         if(kwargs["from_scratch"] is False and kwargs["pretrained_model_filename"][-4:]!="_enc"):#if trying to load a full model the label_itos has to coincide
-            assert(label_itos == np.load(PRETRAINED_FOLDER/'label_itos.npy')), "label_itos of both models have to coincide" #could implement a similar remapping as for tok_itos at some point
+            label_itos_old = np.load(PRETRAINED_FOLDER/'label_itos.npy')
+            if(len(label_itos)!= len(label_itos_old) or label_itos != label_itos_old):
+                print("Warning: label_itos of both models do not coincide")
     # invert order if desired
     if(kwargs["backwards"] is True):
         for i in range(len(tok)):
@@ -326,7 +334,7 @@ def generic_model(clas=True, **kwargs):
                 src = src.label_from_lists(trn_labels,test_labels, label_cls=FloatList, processor=[])
                 data_clas_test = src.databunch(bs=kwargs["bs"],pad_idx=pad_idx)                
 
-            learn = text_classifier_learner(data_clas, arch, config=config_clas, pretrained=False, bptt=kwargs["bptt"], max_len=kwargs["max_len"], drop_mult=kwargs["dropout"], metrics=[],clip=kwargs["clip"],wd=kwargs["wd"])
+            learn = text_classifier_learner(data_clas, arch, config=config_clas, pretrained=False, bptt=kwargs["bptt"], max_len=kwargs["max_len"], drop_mult=kwargs["dropout"], metrics=[],clip=kwargs["clip"],wd=kwargs["wd"],lin_ftrs=kwargs["lin_ftrs"])
             learn.loss_func = mse_flat_inequalities #mse_flat#F.mse_loss #l1_loss   
         else:
             #factory method
@@ -349,9 +357,12 @@ def generic_model(clas=True, **kwargs):
                 src = src.label_from_lists(trn_labels,test_labels, classes=label_itos, label_cls=(None if multi_class is False else partial(MultiCategoryList,one_hot=True)), processor=[])
                 data_clas_test= src.databunch(bs=kwargs["bs"],pad_idx=pad_idx)
 
-            learn = text_classifier_learner(data_clas, arch, config=config_clas, pretrained=False, bptt=kwargs["bptt"], max_len=kwargs["max_len"], drop_mult=kwargs["dropout"], metrics=[],clip=kwargs["clip"],wd=kwargs["wd"])
+            learn = text_classifier_learner(data_clas, arch, config=config_clas, pretrained=False, bptt=kwargs["bptt"], max_len=kwargs["max_len"], drop_mult=kwargs["dropout"], metrics=[],clip=kwargs["clip"],wd=kwargs["wd"],lin_ftrs=kwargs["lin_ftrs"])
             if(multi_class):
-                learn.loss_func = F.binary_cross_entropy_with_logits 
+                if(kwargs["hierarchical"] is None):
+                    learn.loss_func = F.binary_cross_entropy_with_logits 
+                else:
+                    learn.loss_func = partial(crossentropy_hierarchical,hierarchy=kwargs["hierarchical"])
         
         #set metrics for classification
         if(not(kwargs["regression"])):
@@ -404,9 +415,9 @@ def generic_model(clas=True, **kwargs):
     if(kwargs["early_stopping"]!="None"):
         #learn.callback_fns.append(partial(EarlyStoppingCallback, monitor=kwargs["early_stopping"], min_delta=0.01, patience=3))
         learn.callback_fns.append(partial(SaveModelCallback, monitor=kwargs["early_stopping"], every='improvement', name=kwargs["model_filename_prefix"]+'_3'))
-
-
-    if(kwargs["train"]):
+        
+    if(kwargs["train"] and kwargs["return_learner"] is False):
+        print("Training started...")
         with open(WORKING_FOLDER/'kwargs.pkl', 'wb') as handle:
             print("Saving kwargs as kwargs.pkl...")
             pickle.dump(kwargs, handle)
@@ -422,7 +433,16 @@ def generic_model(clas=True, **kwargs):
                 learn.load_encoder('pretrained')
             else:
                 print("Loading pretrained model from ",kwargs["pretrained_model_filename"])
-                learn.load('pretrained')
+                sdict = torch.load(dest_model)
+                if(sdict["model"][list(sdict["model"].keys())[-2]].size()[0] != len(label_itos)):
+                    keys = list(sdict["model"].keys())
+                    print("Size of the output layer does not match. Discarding the top layer:",keys[-1],keys[-2])
+                    del sdict["model"][keys[-2]]
+                    del sdict["model"][keys[-1]]
+                    torch.save(sdict,dest_model)
+                    learn.load('pretrained',strict=False)
+                else:
+                    learn.load('pretrained')
 
         if(kwargs["gradual_unfreezing"] is True and kwargs["from_scratch"] is False):
             #train top layer
@@ -551,11 +571,16 @@ def generic_model(clas=True, **kwargs):
             
             learn.save(kwargs["model_filename_prefix"]+'_3')
             learn.save_encoder(kwargs["model_filename_prefix"]+'_3'+'_enc')
-    else:
+    elif(kwargs["from_scratch"] is False):
+        print("Loading model ",kwargs["model_filename_prefix"]+"_3","from",kwargs["model_folder"])
         if(kwargs["model_folder"]!=""):
             learn.path = Path(kwargs["model_folder"])
-        learn.load(kwargs["model_filename_prefix"]+'_3')
+        learn.load(kwargs["model_filename_prefix"]+"_3")
 
+    
+    if(kwargs["return_learner"]):
+        return learn
+        
     #always run validate
     result = validate_log_csv(learn, WORKING_FOLDER, kwargs=kwargs)
     
@@ -563,24 +588,24 @@ def generic_model(clas=True, **kwargs):
     if(kwargs["export_preds"] is True):
         filename_output = "preds_valid.npz" if kwargs["cv_fold"]==-1 else ("preds_valid_fold"+str(kwargs["cv_fold"])+".npz")
         print("Exporting predictions as ",filename_output)
-        val_clas_len = [len(x) for x in val_toks]
-        val_toks_sorted = sorted(range_of(val_toks), key=lambda t: val_clas_len[t])
-        val_IDs_sorted = [val_IDs[x] for x in val_toks_sorted]
+        #val_clas_len = [len(x) for x in val_toks]
+        #val_toks_sorted = sorted(range_of(val_toks), key=lambda t: val_clas_len[t])
+        #val_IDs_sorted = [val_IDs[x] for x in val_toks_sorted]
         #val_IDs_sorted_full = np.load(CLAS_FOLDER/'ID.npy')[val_IDs_sorted]
-        preds, targs = learn.get_preds(ds_type=DatasetType.Valid)
-        np.savez(WORKING_FOLDER/filename_output,IDs=val_IDs_sorted,preds=preds,targs=targs)
+        preds, targs = learn.get_preds(ds_type=DatasetType.Valid,ordered=True)
+        np.savez(WORKING_FOLDER/filename_output,IDs=val_IDs,preds=preds,targs=targs)
        
         if(kwargs["eval_on_val_test"] is True):
             filename_output = "preds_test.npz" if kwargs["cv_fold"]==-1 else ("preds_test_fold"+str(kwargs["cv_fold"])+".npz")
             print("Exporting predictions as ",filename_output)
             learn.data = data_clas_test
-            val_toks = tok[test_IDs] #use test ID s here
-            val_clas_len = [len(x) for x in val_toks]
-            val_toks_sorted = sorted(range_of(val_toks), key=lambda t: val_clas_len[t])
-            val_IDs_sorted = [test_IDs[x] for x in val_toks_sorted]
+            #val_toks = tok[test_IDs] #use test ID s here
+            #val_clas_len = [len(x) for x in val_toks]
+            #val_toks_sorted = sorted(range_of(val_toks), key=lambda t: val_clas_len[t])
+            #val_IDs_sorted = [test_IDs[x] for x in val_toks_sorted]
             
-            preds, targs = learn.get_preds(ds_type=DatasetType.Valid)
-            np.savez(WORKING_FOLDER/filename_output,IDs=val_IDs_sorted,preds=preds,targs=targs)
+            preds, targs = learn.get_preds(ds_type=DatasetType.Valid,ordered=True)
+            np.savez(WORKING_FOLDER/filename_output,IDs=test_IDs,preds=preds,targs=targs)
             
     
     if(kwargs["eval_on_val_test"]):

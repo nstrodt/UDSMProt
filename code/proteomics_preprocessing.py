@@ -1,17 +1,4 @@
 '''Preparing datasets for language modelling, classification and sequence annotation
-
-Basic usage
-===========
-Language modelling:
-python proteomics_preprocessing.py lm_sprot
-
-Classification:
-python proteomics_preprocessing.py clas_interpro
-python proteomics_preprocessing.py clas_ec
-
-Annotation:
-python proteomics_preprocessing.py anno_interpro
-python proteomics_preprocessing.py anno_phos_sprot
 '''
 
 import fire
@@ -116,7 +103,6 @@ def load_cdhit(df, cluster_type, dataset):
         df.to_pickle(path_pkl)
         return df
         
-
 def write_log_header(path, kwargs, filename="logfile.log",append=True):
     path.mkdir(exist_ok=True)
     (path/"models").mkdir(exist_ok=True)
@@ -322,13 +308,14 @@ class Preprocess(object):
 
         self._preprocess_default(path=CLAS_PATH,pretrained_path=LM_PATH,df=df_clas,df_cluster=df_clas,pad_idx=pad_idx,mask_idx=mask_idx,sequence_len_min_aas=sequence_len_min_aas,sequence_len_max_aas=sequence_len_max_aas,sequence_len_max_tokens=sequence_len_max_tokens,bpe=bpe,bpe_vocab_size=bpe_vocab_size,sampling_method_train=-1,sampling_method_valtest=-1, save_prev_ids=False)
     
-    def clas_ec(self, source_sprot=path_sprot, source_uniref=path_uniref, dataset="uniprot",level=1,include_NoEC=False,minproteinexistence_NoEC=4,ecpred_accessions_add_redundancy=False,ecpred_accessions_train_val_ratio=0.95,drop_incomplete=True,drop_ec7=True,drop_fragments=True,minproteinexistence=0,exclude_aas=[],single_label=True,working_folder="./clas_ec_sprot",pretrained_folder="./lm_sprot",pad_idx=0,mask_idx=1,sequence_len_min_aas=50,sequence_len_max_aas=5000,sequence_len_max_tokens=0,nfolds=None,sampling_ratio=[0.8,0.1,0.1],ignore_pretrained_clusters=False, cluster_type="uniref", ignore_clusters=False,bpe=False,bpe_vocab_size=100,sampling_method_train=1,sampling_method_valtest=3,subsampling_ratio_train=1.0,randomize=False,random_seed=42, save_prev_ids=False):
+    def clas_ec(self, source_sprot=path_sprot, source_uniref=path_uniref, dataset="uniprot",level=1,include_NoEC=False,minproteinexistence_NoEC=4,include_superclasses=False,ecpred_accessions_add_redundancy=False,ecpred_accessions_train_val_ratio=0.95,drop_incomplete=True,drop_ec7=True,drop_fragments=True,minproteinexistence=0,exclude_aas=[],single_label=True,working_folder="./clas_ec_sprot",pretrained_folder="./lm_sprot",pad_idx=0,mask_idx=1,sequence_len_min_aas=50,sequence_len_max_aas=5000,sequence_len_max_tokens=0,nfolds=None,sampling_ratio=[0.8,0.1,0.1],ignore_pretrained_clusters=False, cluster_type="uniref", ignore_clusters=False,bpe=False,bpe_vocab_size=100,sampling_method_train=1,sampling_method_valtest=3,subsampling_ratio_train=1.0,randomize=False,random_seed=42, save_prev_ids=False):
         '''prepare EC classification data
         dataset: uniprot (default uniprot), knna, knnb, deeppre aka knn_new, deepre_accession (via accessions provided on their homepage), ecpred_accessionsX (via accessions provided in their github repository; for ec class X=1..6 using all data for training), ecpred_accesionsXb (corresponding dataset for training a binary classifier using the corresponding training set of the respective class only)
         level: predict up a certain level in the EC hierarchy (level=1: first digit)
         include_NoEC: include non-enzymes as a separate class
         minproteinexistence_NoEC: keep only non-enzymes with proteinexistence equal to or larger than minproteinexistence_NoEC
         single_label: discard all multi-label entries
+        include_superclasses: include also all corresponding superclasses as labels
         
         ecpred_accessions_add_redundancy: add redundant sequences from sprot to enlarge the ecpred training dataset
         ecpred_accessions_train_val_ratio: split original expred training set into training and validation set according to this ratio
@@ -440,19 +427,16 @@ class Preprocess(object):
             ignore_pretrained_clusters = True
             drop_fragments = False
 
-        df_ec, ec_itos = ecs_from_df(df,level=level,include_NoEC=include_NoEC,drop_incomplete=drop_incomplete,drop_ec7=drop_ec7)
+        df_ec, ec_itos = ecs_from_df(df,level=level,include_NoEC=include_NoEC,drop_incomplete=drop_incomplete,drop_ec7=drop_ec7,single_label=single_label,include_superclasses=include_superclasses)
+
         if(df_redundancy is not None):
-            df_clas_redundancy, _ = ecs_from_df(df_redundancy,level=level,include_NoEC=include_NoEC,drop_incomplete=drop_incomplete,drop_ec7=drop_ec7)
+            df_clas_redundancy, _ = ecs_from_df(df_redundancy,level=level,include_NoEC=include_NoEC,drop_incomplete=drop_incomplete,drop_ec7=drop_ec7,single_label=single_label,include_superclasses=include_superclasses)
                
-        if(single_label):
-            df_ec["num_ecs"]=df_ec.ecs_truncated.apply(len)
+        if(single_label is True and include_superclasses is False):
             df_ec["label"]=df_ec.ecs_truncated.apply(lambda x: x[0])
-            df_clas = df_ec[df_ec.num_ecs ==1].copy()
+            df_clas = df_ec
             if df_redundancy is not None:
-                df_clas_redundancy["num_ecs"]=df_clas_redundancy.ecs_truncated.apply(len)
                 df_clas_redundancy["label"]=df_clas_redundancy.ecs_truncated.apply(lambda x: x[0])
-                df_clas_redundancy = df_clas_redundancy[df_clas_redundancy.num_ecs ==1].copy()
-            
         else:
             df_ec["label"]=df_ec.ecs_truncated
             df_clas = df_ec
@@ -460,23 +444,30 @@ class Preprocess(object):
                 df_clas_redundancy["label"]=df_clas_redundancy.ecs_truncated
 
         self._preprocess_default(path=CLAS_PATH,pretrained_path=LM_PATH,df=df_clas,df_cluster=df_cluster,label_itos_in=ec_itos,pad_idx=pad_idx,mask_idx=mask_idx,sequence_len_min_aas=sequence_len_min_aas,sequence_len_max_aas=sequence_len_max_aas,sequence_len_max_tokens=sequence_len_max_tokens,drop_fragments=drop_fragments,minproteinexistence=minproteinexistence,exclude_aas=exclude_aas,nfolds=nfolds,sampling_ratio=sampling_ratio, ignore_pretrained_clusters=ignore_pretrained_clusters,bpe=bpe,bpe_vocab_size=bpe_vocab_size,sampling_method_train=sampling_method_train,sampling_method_valtest=sampling_method_valtest,subsampling_ratio_train=subsampling_ratio_train,randomize=randomize,random_seed=random_seed, save_prev_ids=save_prev_ids,df_redundancy=df_clas_redundancy,df_cluster_redundancy=df_cluster_redundancy)
-    def clas_go_deeprotein(self,train_on_cafa3_original=False, eval_on_cafa3_test=True,filename_train_cafa3_original="../data/train_cafa3_original.shuffled.csv",filename_train_cafa3_expanded="../data/filtered_sp_cdhitted_05.csv.shuffled", filename_test_cafa3="../data/test_cafa3.shuffled.csv", filename_test_cafa3_deepgo_comparison="../data/test_cafa3_deepgo_comparison.shuffled.csv",drop_fragments=False,minproteinexistence=0,exclude_aas=[],working_folder="./clas_go_deeprotein",pretrained_folder="./lm_sprot",pad_idx=0,mask_idx=1,sequence_len_min_aas=50,sequence_len_max_aas=1000,sequence_len_max_tokens=0):
-        '''prepares GO classification data based on Deeprotein csv files
+    def clas_go_deepgoplus(self,cafa_data=True,nmin_train=50,ont_filter=None,working_folder="./clas_go_deepgoplus",pretrained_folder="./lm_sprot",pad_idx=0,mask_idx=1,sequence_len_min_aas=0,sequence_len_max_aas=0,sequence_len_max_tokens=0):
+        '''prepares GO classification data based on Deepgoplus data http://deepgoplus.bio2vec.net/data/
+        requires data_cafa.tar.gz extracted in data or data_2016.tar.gz extracted in data as deepgoplus_data_cafa or deepgoplus_data_2016
         '''
-        print("Preparing deeprotein GO classification dataset...")
+        print("Preparing deepgoplus GO classification dataset...")
+        if(cafa_data is True):
+            source_folder="../data/deepgoplus_data_cafa"
+            use_valid=True
+        else:
+            source_folder="../data/deepgoplus_data_2016"
+            use_valid=False
         
         CLAS_PATH = Path(working_folder)
         LM_PATH=Path(pretrained_folder) if pretrained_folder!="" else None
         write_log_header(CLAS_PATH,locals())
         
-        #filter go-terms as done by deeprotein
-        go_selection=list(pd.read_csv("../git_data/go_file.txt",sep=" ",header=None)[2].apply(lambda x:x.split(".")[0]))
-        print("Selected GO terms:",len(go_selection))
-
-        df_clas = generate_deeprotein_dataset(train_on_cafa3_original=train_on_cafa3_original, eval_on_cafa3_test=eval_on_cafa3_test,go_selection=go_selection,filename_train_cafa3_original=filename_train_cafa3_original,filename_train_cafa3_expanded=filename_train_cafa3_expanded, filename_test_cafa3=filename_test_cafa3, filename_test_cafa3_deepgo_comparison=filename_test_cafa3_deepgo_comparison)
+        source_path = Path(source_folder)
+        
+        df_clas = prepare_deepgoplus_data(source_path/"train_data_train.pkl" if use_valid else source_path/"train_data.pkl",source_path/"train_data_valid.pkl" if use_valid else None,source_path/"test_data.pkl",str(source_path/"go.obo"),nmin_train=nmin_train,propagate_scores=False,ont_filter=ont_filter)
+        
         df_cluster = df_clas #predetermined split
 
-        self._preprocess_default(path=CLAS_PATH,pretrained_path=LM_PATH,df=df_clas,df_cluster=df_cluster,pad_idx=pad_idx,mask_idx=mask_idx,sequence_len_min_aas=sequence_len_min_aas,sequence_len_max_aas=sequence_len_max_aas,sequence_len_max_tokens=sequence_len_max_tokens,drop_fragments=drop_fragments,minproteinexistence=minproteinexistence,exclude_aas=exclude_aas,sampling_method_train=-1,sampling_method_valtest=-1,ignore_pretrained_clusters=True)
+        self._preprocess_default(path=CLAS_PATH,pretrained_path=LM_PATH,df=df_clas,df_cluster=df_cluster,pad_idx=pad_idx,mask_idx=mask_idx,sequence_len_min_aas=sequence_len_min_aas,sequence_len_max_aas=sequence_len_max_aas,sequence_len_max_tokens=sequence_len_max_tokens,sampling_method_train=-1,sampling_method_valtest=-1,ignore_pretrained_clusters=True)
+        
     #############################
     # GENERATE PSSM FEATURES 
     #############################

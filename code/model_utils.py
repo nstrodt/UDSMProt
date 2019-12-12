@@ -61,7 +61,7 @@ def write_log_header(path, kwargs, filename="logfile.log",append=True):
     print("")
 
     filepath=path/filename
-    with filepath.open("w" if append is False else "a", encoding ="utf-8") as f:
+    with filepath.open("w" if (append is False or filepath.exists() is False) else "a", encoding ="utf-8") as f:
         f.write("\n\nCommand "+" ".join(sys.argv)+"\n")
         f.write("started at "+str(time)+"\n")
         f.write("Commit "+str(commit)+"\n")
@@ -162,7 +162,22 @@ def mse_flat(preds,targs):
     #input()
     return torch.mean(torch.pow(preds.view(-1)-targs.view(-1),2))
 
+
+def crossentropy_hierarchical(preds, targs, hierarchy=[[0,6]]):
+    loss = None
+    for h in hierarchy:
+        l = F.cross_entropy(preds[:,h[0]:h[1]],torch.argmax(targs[:,h[0]:h[1]],dim=1))
+        if loss is None:
+            loss = l
+        else:
+            loss += l
+    return loss
     
+def accuracy_hierarchical(preds,targs,hierarchy=[6]):
+    targs = torch.argmax(targs[:,hierarchy[-1]:-1],dim=1)
+    preds = torch.argmax(preds[:,hierarchy[-1]:-1],dim=1)
+    return (preds == targs).float().mean()
+
 def crossentropy_mask(preds, targs, ignore_idx=None):
     '''crossentropy loss with flattening operation (for annotation) disregarding label specified via ignore_idx'''
     preds_flat = preds.view((-1,preds.size()[-1]))
