@@ -1,25 +1,26 @@
-# UDSMProt: Universal Deep Sequence Models for Protein Classification
+# UDSMProt, universal deep sequence models for protein classification
 **UDSMProt** is an algorithm for the classification of proteins based on the sequence of amino acids alone. Its key component is a self-supervised pretraining step based on a language modeling task. The model is then subsequently finetuned to specific classification tasks. In our paper we considered enzyme class classification, gene ontology prediction and remote homology detection showcasing the excellent performance of **UDSMProt**.
 
 For a detailed description of technical details and experimental results, please refer to our paper:
 
-[Universal Deep Sequence Models for Protein Classification](https://doi.org/10.1101/704874)
 
-Nils Strodthoff, Patrick Wagner, Markus Wenzel, and Wojciech Samek
 
-bioRxiv preprint 2019
-
-    @article{Strodthoff:2019UDSMProt,
-	author = {Strodthoff, Nils and Wagner, Patrick and Wenzel, Markus and Samek, Wojciech},
-	title = {{UDSMProt: Universal Deep Sequence Models for Protein Classification}},
-	elocation-id = {704874},
-	year = {2019},
-	doi = {10.1101/704874},
-	publisher = {Cold Spring Harbor Laboratory},
-	journal = {bioRxiv}
-	}
-
-This is the accompanying code repository, where we also provide links to [pretrained language models](https://datacloud.hhi.fraunhofer.de/nextcloud/s/9R8mWzDSYWdQdjd). 
+Nils Strodthoff, Patrick Wagner, Markus Wenzel, and Wojciech Samek, [UDSMProt: universal deep sequence models for protein classification](https://doi.org/10.1093/bioinformatics/btaa003), **Bioinformatics 36**, no. 8, 2401-2409, 2020.
+    
+    @article{Strodthoff:2019universal,
+    author = {Strodthoff, Nils and Wagner, Patrick and Wenzel, Markus and Samek, Wojciech},
+    title = "{UDSMProt: universal deep sequence models for protein classification}",
+    journal = {Bioinformatics},
+    volume = {36},
+    number = {8},
+    pages = {2401-2409},
+    year = {2020},
+    month = {01},
+    issn = {1367-4803},
+    doi = {10.1093/bioinformatics/btaa003},
+    }
+    
+An earlier preprint of this work is also available at [bioRxiv](https://www.biorxiv.org/content/10.1101/704874v2). This is the accompanying code repository, where we also provide links to [pretrained language models](https://datacloud.hhi.fraunhofer.de/nextcloud/s/9R8mWzDSYWdQdjd). 
 
 Also have a look at [**USMPep**](https://github.com/nstrodt/USMPep):[Universal Sequence Models for Major Histocompatibility Complex Binding Affinity Prediction](https://doi.org/10.1101/816546) that builds on the same framework.
 
