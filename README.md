@@ -20,7 +20,7 @@ Nils Strodthoff, Patrick Wagner, Markus Wenzel, and Wojciech Samek, [UDSMProt: u
     doi = {10.1093/bioinformatics/btaa003},
     }
     
-An earlier preprint of this work is also available at [bioRxiv](https://www.biorxiv.org/content/10.1101/704874v2). This is the accompanying code repository, where we also provide links to [pretrained language models](https://datacloud.hhi.fraunhofer.de/s/9R8mWzDSYWdQdjd). 
+An earlier preprint of this work is also available at [bioRxiv](https://www.biorxiv.org/content/10.1101/704874v2). This is the accompanying code repository, where we also provide links to [pretrained language models](https://cloud.uol.de/s/gAbkQZkHNKKbtjC). 
 
 Also have a look at [**USMPep**](https://github.com/nstrodt/USMPep):[Universal Sequence Models for Major Histocompatibility Complex Binding Affinity Prediction](https://doi.org/10.1101/816546) that builds on the same framework.
 
@@ -48,7 +48,7 @@ Optionally (for support of threshold 0.4 clusters) install [cd-hit](`https://git
 ## Data
 ### Swiss-Prot and UniRef
 * Download and extract the desired Swiss-Prot release (by default we use 2017_03) from the [UniProt ftp server](ftp://ftp.uniprot.org/pub/databases/uniprot/previous_releases/release-2017_03/knowledgebase/uniprot_sprot-only2017_03.tar.gz). Save the contained `uniprot_sprot.xml` as `uniprot_sprot_YEAR_MONTH.xml` in the `./data` directory 
-* Download and extract the desired UniRef release (by default we use 2017_03) from the [UniProt ftp server](ftp://ftp.uniprot.org/pub/databases/uniprot/previous_releases/release-2017_03/uniref/uniref2017_03.tar.gz). Save the contained `uniref50.xml` as `uniref50_YEAR_MONTH.xml` in the `./data` directory. As an alternative and for full reproducibility, we also provide [pickled cluster files](https://datacloud.hhi.fraunhofer.de/s/9R8mWzDSYWdQdjd) `cdhit04_uniprot_sprot_2016_07.pkl` and `uniref50_2017_03_uniprot_sprot_2017_03.pkl` to be placed under `./tmp_data` that avoid downloading the full UniRef file or running cd-hit.
+* Download and extract the desired UniRef release (by default we use 2017_03) from the [UniProt ftp server](ftp://ftp.uniprot.org/pub/databases/uniprot/previous_releases/release-2017_03/uniref/uniref2017_03.tar.gz). Save the contained `uniref50.xml` as `uniref50_YEAR_MONTH.xml` in the `./data` directory. As an alternative and for full reproducibility, we also provide [pickled cluster files](https://cloud.uol.de/s/gAbkQZkHNKKbtjC) `cdhit04_uniprot_sprot_2016_07.pkl` and `uniref50_2017_03_uniprot_sprot_2017_03.pkl` to be placed under `./tmp_data` that avoid downloading the full UniRef file or running cd-hit.
 * Or just call our provided script `./download_swissprot_uniref.sh 2017 03` which manages everything for you.
 
 ### EC prediction
@@ -81,7 +81,7 @@ cd code
 
 ## Basic Usage
 We provide some basic usage information for the most common tasks:
-* Language Model Pretraining (or skip this step and use the [provided pretrained LMs](https://datacloud.hhi.fraunhofer.de/s/9R8mWzDSYWdQdjd) (forward and backward models trained on SwissProt 2017_03))
+* Language Model Pretraining (or skip this step and use the [provided pretrained LMs](https://cloud.uol.de/s/gAbkQZkHNKKbtjC) (forward and backward models trained on SwissProt 2017_03))
 ```shell
 cd code
 python modelv1.py language_model --epochs=60 --lr=0.01 --working_folder=datasets/lm/lm_sprot_dirty/ --export_preds=False --eval_on_val_test=True
